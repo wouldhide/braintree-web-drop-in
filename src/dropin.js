@@ -127,7 +127,7 @@ Dropin.prototype = Object.create(EventEmitter.prototype, {
 });
 
 Dropin.prototype._initialize = function (callback) {
-  var localizedStrings, localizedHTML, strings;
+  var form, localizedStrings, localizedHTML, strings;
   var dropinInstance = this; // eslint-disable-line consistent-this
   var container = this._merchantConfiguration.container || this._merchantConfiguration.selector;
 
@@ -174,6 +174,39 @@ Dropin.prototype._initialize = function (callback) {
   }, mainHTML);
 
   this._dropinWrapper.innerHTML = svgHTML + localizedHTML;
+
+  if (this._merchantConfiguration.hijackForm) {
+    form = findParentForm(container);
+
+    if (!form) {
+      callback(new DropinError('container must be inside a form element'));
+      return;
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      this.requestPaymentMethod(function (err, payload) {
+        var paymentMethodNonce = form.querySelector('[name="payment_method_nonce"]');
+
+        if (err) {
+          return;
+        }
+
+        if (!paymentMethodNonce) {
+          paymentMethodNonce = document.createElement('input');
+          paymentMethodNonce.type = 'hidden';
+          paymentMethodNonce.name = 'payment_method_nonce';
+          form.appendChild(paymentMethodNonce);
+        }
+
+        paymentMethodNonce.value = payload.nonce;
+
+        form.submit();
+      });
+    }.bind(this));
+  }
+
   container.appendChild(this._dropinWrapper);
 
   this._getVaultedPaymentMethods(function (paymentMethods) {
@@ -426,6 +459,16 @@ function formatPaymentMethodPayload(paymentMethod) {
   }
 
   return formattedPaymentMethod;
+}
+
+function findParentForm(element) {
+  var parentNode = element.parentNode;
+
+  if (!parentNode || parentNode.nodeName === 'FORM') {
+    return parentNode;
+  }
+
+  return findParentForm(parentNode);
 }
 
 module.exports = Dropin;

@@ -609,6 +609,134 @@ describe('Dropin', function () {
         done();
       });
     });
+
+    it('errors if hijackForm options is used without a form', function (done) {
+      var instance;
+
+      this.dropinOptions.merchantConfiguration.hijackForm = true;
+      instance = new Dropin(this.dropinOptions);
+
+      instance._initialize(function (err) {
+        expect(err.message).to.equal('container must be inside a form element');
+        done();
+      });
+    });
+
+    it('adds submit listener to form for requesting a payment method', function (done) {
+      var instance;
+      var form = document.createElement('form');
+
+      document.body.appendChild(form);
+      form.appendChild(this.container);
+      this.sandbox.stub(form, 'addEventListener');
+
+      this.dropinOptions.merchantConfiguration.hijackForm = true;
+      instance = new Dropin(this.dropinOptions);
+
+      instance._initialize(function (err) {
+        expect(err).to.not.exist;
+        expect(form.addEventListener).to.be.calledOnce;
+        expect(form.addEventListener).to.be.calledWith('submit', this.sandbox.match.func);
+        document.body.removeChild(form);
+        done();
+      }.bind(this));
+    });
+
+    it('adds payment method nonce to form and submits form if payment method is requestable', function (done) {
+      var instance;
+      var form = document.createElement('form');
+      var submitButton = document.createElement('input');
+
+      submitButton.type = 'submit';
+      this.sandbox.stub(form, 'submit');
+      document.body.appendChild(form);
+      form.appendChild(this.container);
+      form.appendChild(submitButton);
+
+      this.dropinOptions.merchantConfiguration.hijackForm = true;
+      instance = new Dropin(this.dropinOptions);
+      this.sandbox.stub(instance, 'requestPaymentMethod').yields(null, {nonce: 'a-nonce'});
+
+      instance._initialize(function (err) {
+        expect(err).to.not.exist;
+
+        submitButton.click();
+
+        expect(document.querySelector('input[name="payment_method_nonce"]').value).to.equal('a-nonce');
+        expect(instance.requestPaymentMethod).to.be.calledOnce;
+        expect(form.submit).to.be.calledOnce;
+
+        document.body.removeChild(form);
+        done();
+      });
+    });
+
+    it('adds payment method nonce input to form if it does not already exist', function (done) {
+      var instance;
+      var form = document.createElement('form');
+      var submitButton = document.createElement('input');
+
+      submitButton.type = 'submit';
+      this.sandbox.stub(form, 'submit');
+      document.body.appendChild(form);
+      form.appendChild(this.container);
+      form.appendChild(submitButton);
+
+      this.dropinOptions.merchantConfiguration.hijackForm = true;
+      instance = new Dropin(this.dropinOptions);
+      this.sandbox.stub(instance, 'requestPaymentMethod').yields(null, {nonce: 'first-nonce'});
+
+      instance._initialize(function (err) {
+        expect(err).to.not.exist;
+
+        expect(form.querySelector('input[name="payment_method_nonce"]')).to.not.exist;
+
+        submitButton.click();
+
+        expect(form.querySelector('input[name="payment_method_nonce"]')).to.exist;
+        expect(form.querySelector('input[name="payment_method_nonce"]').value).to.equal('first-nonce');
+
+        instance.requestPaymentMethod.yields(null, {
+          nonce: 'second-nonce'
+        });
+
+        submitButton.click();
+
+        expect(form.querySelector('input[name="payment_method_nonce"]').value).to.equal('second-nonce');
+        expect(form.querySelectorAll('input[name="payment_method_nonce"]').length).to.equal(1);
+
+        document.body.removeChild(form);
+        done();
+      });
+    });
+
+    it('does not submit form if requestPaymentMethod is not successful', function (done) {
+      var instance;
+      var form = document.createElement('form');
+      var submitButton = document.createElement('input');
+
+      submitButton.type = 'submit';
+      this.sandbox.stub(form, 'submit');
+      document.body.appendChild(form);
+      form.appendChild(this.container);
+      form.appendChild(submitButton);
+
+      this.dropinOptions.merchantConfiguration.hijackForm = true;
+      instance = new Dropin(this.dropinOptions);
+      this.sandbox.stub(instance, 'requestPaymentMethod').yields(new Error('an error'));
+
+      instance._initialize(function (err) {
+        expect(err).to.not.exist;
+
+        submitButton.click();
+
+        expect(form.querySelector('input[name="payment_method_nonce"]')).to.not.exist;
+        expect(form.submit).to.not.be.called;
+
+        document.body.removeChild(form);
+        done();
+      });
+    });
   });
 
   describe('teardown', function () {
